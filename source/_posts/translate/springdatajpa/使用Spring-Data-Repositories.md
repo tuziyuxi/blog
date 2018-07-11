@@ -182,4 +182,38 @@ class SomeClient {
 * 创建Repository实例（4.5）
 * 自定义实现Spring Data Repository
 
-## 4.3 
+## 4.3 定义Repository接口
+
+首先，定义一个特殊域类接口。接口必须继承Repository,并且绑定域类和ID类型。如果你想要暴露域类的CRUD方法，继承CrudRepository代替Repository。
+
+### 4.3.1 微调Repository定义
+
+通常，你的repository接口继承Repository,CrudRepository,或者PagingAndSortingRepository。另外，如果你不想继承Spring Data接口，你也可以用@RepositoryDefinition注解你的repository接口。继承CrudRepository暴露一个完整的操作实体方法的集合。如果你更倾向于选择一些方法暴露，从CrudRepository复制一些方法到你的域类。
+
+！这样做可以让你在提供的Spring Data Repositories功能上定义你自己的抽象类。
+
+以下示例演示了如何选择暴露CRUD方法（在这例子里，暴露了findById和save方法）
+
+例子7. 选择暴露CRUD方法
+
+```
+@NoRepositoryBean
+interface MyBaseRepository<T, ID extends Serializable> extends Repository<T, ID> {
+
+  Optional<T> findById(ID id);
+
+  <S extends T> S save(S entity);
+}
+
+interface UserRepository extends MyBaseRepository<User, Long> {
+  User findByEmailAddress(EmailAddress emailAddress);
+}
+```
+
+在上面例子中，你为所有的域类repositories定义了公共基本接口，并且暴露了findById()和save()方法。这些方法被路由到Spring Data提供的你选择的存储的基本repository实现（例如：如果你使用JPA，实现就是SimpleJpaRepository）,因为它们匹配CrudRepository的签名。所以，现在UserRepository可以保存用户，通过id查询用户，并且触发查询通过邮件地址查询用户。
+
+！中间的repository接口被@NoRepositoryBean注解。确保你给所有repository接口添加该注解，以保证Spring Data在运行时不会创建实例。
+
+### 4.3.2  Repository方法的Null处理
+
+
