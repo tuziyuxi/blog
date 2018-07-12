@@ -216,4 +216,51 @@ interface UserRepository extends MyBaseRepository<User, Long> {
 
 ### 4.3.2  Repository方法的Null处理
 
+从Spring Data 2.0开始，repository CRUD方法返回一个使用Java 8的Optional指示潜在空值的单个聚合实例。除此之外，Spring Data支持在查询方法返回如下包装类型：
+
+* com.google.common.base.Optional
+* scala.Option
+* io.vavr.control.Option
+* javaslang.control.Option(不推荐使用Javaslang)
+
+或者，查询方法可以根本不使用包装类型。通过返回null来表明没有查询结果。保证返回集合，集合代替，包装类和流的Repository方法不会返回null，而是返回相应的空表示。查看“Repository查询返回类型”详情。
+
+可空性注解
+
+你可以通过使用Spring框架的可控性注解来表示repository方法的可空性约束。它们在运行时提供了友好的方法和opt-in null检查，如下：
+
+* @NonNullApi:使用在包级别来声明参数和返回值的默认行为不接受和产生null值。
+* @NonNull:用在参数和返回值，该值不能为null（参数和返回值不需要使用@NonNullApi）
+* @Nullable:用在参数和返回值，该值可以为null
+
+Spring注解是使用JSR 305注解的元注解（一种休眠但广泛传播的JSR）。JSR 305元注解让IDEA，Eclipse和Kotlin等工具厂商以通用方式提供null值安全的支持，而无须对Spring 注解进行硬编码支持。要对查询方法在运行时检查可空性约束，你需要在package-info.java使用Spring的@NonNullApi在包级别激活非可空性。如下示例：
+
+例子8. 在package-info.java声明非可空性
+
+```
+@org.springframework.lang.NonNullApi
+package com.acme;
+```
+一旦存在非空默认，repository查询方法在运行时获得可空性约束验证。如果查询执行结果返回了定义约束，会抛出异常。当方法返回null,却声明了非null时就会发生（默认情况下，注解定义在repository所在包上）。如果你想再次选择可以为空的结果，请在各个方法上使用@Nullable。使用本章开头提及的使用结果封装类可以继续如期望那样工作：一个空值转化为代表缺席的值。
+
+如下示例展示了一些刚刚描述的技术：
+
+例子9. 使用不同的可空性约束
+```
+//repository在一个我们已经定义飞空行为的包里
+package com.acme;                                                       
+
+import org.springframework.lang.Nullable;
+
+interface UserRepository extends Repository<User, Long> {
+
+  //
+  User getByEmailAddress(EmailAddress emailAddress);                    
+
+  @Nullable
+  User findByEmailAddress(@Nullable EmailAddress emailAdress);          
+
+  Optional<User> findOptionalByEmailAddress(EmailAddress emailAddress); 
+}
+```
 
