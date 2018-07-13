@@ -254,13 +254,124 @@ import org.springframework.lang.Nullable;
 
 interface UserRepository extends Repository<User, Long> {
 
-  //
+  //当查询执行没有产生结果时抛出EmptyResultDataAccessException异常。当emailAddress为null时抛出IllegalArgumentException异常。
   User getByEmailAddress(EmailAddress emailAddress);                    
 
+  //当执行没有产生结果返回null，emailAdress也可以接受null
   @Nullable
   User findByEmailAddress(@Nullable EmailAddress emailAdress);          
 
+  //查询执行没有产生结果返回Optional.empty()(住:没有值的Optional,用isPresent()判断)
+  //当emailAddress为null时，抛出IllegalArgumentException异常
   Optional<User> findOptionalByEmailAddress(EmailAddress emailAddress); 
 }
 ```
+
+基于Kotlin的Repositories可空性
+
+（略）
+
+### 使用多个Spring Data模块的Repositories
+
+在你的应用程序中使用一个Spring Data模块使事情简单，因为在定义范围的所有repository接口都绑定到Spring Data模块。有时候，应用要求超过使用一个Spring Data模块。在这种情况下，repository在多个持久化技术之间必须区分定义。当在类路径下检测到多个repository工厂，Spring Data进入严格的repository配置模式。严格配置使用repository和域类详情来决定repository定义的Spring Data模块绑定：
+
+1. 如果repository定义继承自特殊模块的repository,那么它是特定Spring Data模块的有效候选者。
+2. 如果域类被特殊模块类型注解注解，那么它是特定Spring Data模块的有效候选者。Spring Data即接收第三方注解（例如JPA的@Entity），也会提供自己的注解（例如Spring Data MongoDB和Spring Data Elasticsearch的@Document）。
+
+如下示例展示使用特定模块接口的repository(再这个例子中是JPA)：
+
+例子11：使用特定模块接口的Repository定义
+```
+interface MyRepository extends JpaRepository<User, Long> { }
+
+@NoRepositoryBean
+interface MyBaseRepository<T, ID extends Serializable> extends JpaRepository<T, ID> {
+  …
+}
+
+interface UserRepository extends MyBaseRepository<User, Long> {
+  …
+}
+```
+MyRepository和UserRepository在他们的类关系中继承了JpaRepository。他们是Spring Data JPA模块的有效候选者。
+
+如下示例展示使用普通接口的repository:
+
+例子12：使用通用接口的repository定义
+
+```
+interface AmbiguousRepository extends Repository<User, Long> {
+ …
+}
+
+@NoRepositoryBean
+interface MyBaseRepository<T, ID extends Serializable> extends CrudRepository<T, ID> {
+  …
+}
+
+interface AmbiguousUserRepository extends MyBaseRepository<User, Long> {
+  …
+}
+```
+AmbiguousRepository和AmbiguousUserRepository在类关系中仅继承Repository和CrudRepository。当使用唯一的Spring Data模块这样是可行的，然而在多个模块无法区分这些repositories应该绑定到哪个特定的Spring Data。
+
+如下示例展示使用注解域类的repository:
+
+例子13：使用注解域类的Repository定义。
+```
+interface PersonRepository extends Repository<Person, Long> {
+ …
+}
+
+@Entity
+class Person {
+  …
+}
+
+interface UserRepository extends Repository<User, Long> {
+ …
+}
+
+@Document
+class User {
+  …
+}
+```
+PersonRepository引用Person，它使用JPA的@Entity注解，所以这个repository明显属于Spring Data JPA。UserRepository引用User,它被Spring Data MongoDB的@Document注解。
+
+下列不正确的示例展示一个repository使用混合注解的域类：
+
+例子14.使用混合注解域类的Repository定义
+```
+interface JpaPersonRepository extends Repository<Person, Long> {
+ …
+}
+
+interface MongoDBPersonRepository extends Repository<Person, Long> {
+ …
+}
+
+@Entity
+@Document
+class Person {
+  …
+}
+```
+这个例子展示了一个域类即使用JPA注解，又使用Spring Data MongoDB注解。它定义了两个repositories,JpaPersonRepository和MongoDBPersonRepository。一个用于JPA，一个用于MongoDB。Spring Data不能够区分repositories部分，导致没有定义。
+ 
+ 
+ 严格repository配置使用repository类型详情和可区分的域类注解来鉴定Spring Data模块的repository候选人。在同一个域类使用多个持久化特定技术的注解是可能的，也允许跨多个持久化技术重用域类。然而，Spring Data不再能够决定绑到repository的唯一模块。
+ 
+ 区分repository的最后一种方法是通过限定repository基础包的范围。基础包定义了扫描repository接口定义的起点，意味着repository定义放置在相应的包中。默认情况下，注解驱动的配置使用配置类的包。基于XML配置中基础包是必须的。
+ 
+ 如下示例展示基础包的注解驱动的配置：
+ 
+ 例子15：基础包的注解驱动配置
+ ```
+@EnableJpaRepositories(basePackages = "com.acme.repositories.jpa")
+@EnableMongoRepositories(basePackages = "com.acme.repositories.mongo")
+interface Configuration { }
+```
+
+## 4.4.定义查询方法
 
