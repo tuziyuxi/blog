@@ -375,3 +375,59 @@ interface Configuration { }
 
 ## 4.4.定义查询方法
 
+repository代理有两个方法从方法名派生出特殊存储的查询
+* 直接从方法名派生查询
+* 使用手工定义查询
+
+可用选项取决于实际存储库。然而，必须有一个策略来决定被创建的实际查询。下一章节讨论可用选项。
+
+### 4.4.1 查询查找策略
+
+下列策略对于repository基础架构解决查询是可选择的。使用XML配置，你可以通过查询查找策略在命名空间配置策略。使用Java配置，你可以使用Enable${store}Repositories注解的查询查找策略属性。对于特定数据库有些策略可能不被支持。
+
+* CREATE尝试从查询方法名称构建特殊存储库查询。一般方法是删除一组已知的方法名的前缀，并解析方法剩余部分。你可以在“Query Creation"读取更多关于查询构造的信息。
+* USE_DECLARED_QUERY 尝试查找声明的查询，如果找不到，就抛出异常。查询可以通过某处的注解来定义，或其他方式声明。查询特定存储文档来查找该存储的有效的选项。如果repository基础架构在引导时如果不能找到方法的声明查询，就失败。
+* CREATE_IF_NOT_FOUND(默认)结合了CREATE和USE_DECLARED_QUERY.它首先查找声明查询，然后如果声明查询没有找到，它创建一个基于名称查询的自定义方法。这是默认查找策略，因此，如果你没有明确配置任何策略，它就被使用。它允许通过方法名快速查询定义，还可以通过引入需要的声明查询来定义这些查询。
+
+### 4.4.2. 查询创建
+
+构建Spring Data repository基础结构的查询构建机制对于构建repository实体的约束查询是有用的。该机制从方法剥夺前缀（find...By,read...By,query...By,count...By,get...By）然后开始解析剩余部分。介绍的短语可以包含更多表达式，例如Distinct在被创建的查询中设置一个区别标志。但是，第一个By作为分隔符来标示查询条件的开始。在一个非常基础的级别，你可以在实体属性上定义条件，并用And和Or连接它们。下列例子展示如何创建一系列查询：
+
+例子16.从方法名称查询构建
+```
+interface PersonRepository extends Repository<User, Long> {
+
+  List<Person> findByEmailAddressAndLastname(EmailAddress emailAddress, String lastname);
+
+  // Enables the distinct flag for the query
+ //可以在查询使用distinct标志
+  List<Person> findDistinctPeopleByLastnameOrFirstname(String lastname, String firstname);
+  List<Person> findPeopleDistinctByLastnameOrFirstname(String lastname, String firstname);
+
+  // Enabling ignoring case for an individual property
+  //可以忽略单个属性的大小写
+  List<Person> findByLastnameIgnoreCase(String lastname);
+  // Enabling ignoring case for all suitable properties
+  //可以忽略所有合适属性的大小写
+  List<Person> findByLastnameAndFirstnameAllIgnoreCase(String lastname, String firstname);
+
+  // Enabling static ORDER BY for a query
+  // 可以在查询使用静态ORDER
+  List<Person> findByLastnameOrderByFirstnameAsc(String lastname);
+  List<Person> findByLastnameOrderByFirstnameDesc(String lastname);
+}
+```
+
+派生方法实际结果依赖你创建查询的持久化存储。然而，有一些共性要注意：
+* 表达式通常是属性和可以被连接的操作相结合。你可以使用AND和OR连接属性表达式。你也可以获得属性表达式操作的支持，例如Between,LessThan,GreaterThan和Like。不同的数据库支持的操作不一样，所以要参考相关文档适当的部分。
+* 方法解析器支持为各个属性设置IgnoreCase标志（例如，findByLastnameIgnoreCase(...)）或者为支持忽略大小写类型的所有属性（通常是String实例，例如，findByLastnameAndFirstnameAllIgnoreCase(...)）。是否支持忽略大小写对于不同存储会不相同，所以为特殊存储查询方法参考参考文档的相关章节。
+* 你可以使用静态排序，通过添加OrderBy短语到引用一个属性的查询方法和提供一个排序指示（Ase或者Desc）.创建支持动态排序的查询方法，请看“Special parameter handling”。
+
+### 4.4.3. 参数表达式
+
+参数表达式
+
+
+
+
+
