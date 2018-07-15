@@ -271,7 +271,7 @@ interface UserRepository extends Repository<User, Long> {
 
 （略）
 
-### 使用多个Spring Data模块的Repositories
+### 4.3.3. 使用多个Spring Data模块的Repositories
 
 在你的应用程序中使用一个Spring Data模块使事情简单，因为在定义范围的所有repository接口都绑定到Spring Data模块。有时候，应用要求超过使用一个Spring Data模块。在这种情况下，repository在多个持久化技术之间必须区分定义。当在类路径下检测到多个repository工厂，Spring Data进入严格的repository配置模式。严格配置使用repository和域类详情来决定repository定义的Spring Data模块绑定：
 
@@ -425,9 +425,182 @@ interface PersonRepository extends Repository<User, Long> {
 
 ### 4.4.3. 参数表达式
 
-参数表达式
+参数表达式可以只引用管理实体的直接属性，如之前例子展示那样。在查询创建时，你已经确定派生方法是管理域类的一个属性。但是，你也可以通过遍历嵌套属性来定义约束。考虑如下方法签名：
+```
+List<Person> findByAddressZipCode(ZipCode zipCode);
+```
+假设一个Person有一个带有ZipCode的Address。在这个例子中，方法创建属性遍历x.address.zipCode。解析算法首先把这个部分（AddressZipCode）当做属性，然后检查域类是否有这样一个属性（未大写）。如果算法成功，则使用该属性，如果不成功，算法在从右边驼峰大写部分拆分为一个头部和一个尾部，然后尝试找到相应的属性-在我们的例子中，分为AddresZip和Code。如果算法找到以那开头的属性，继续拿到尾部，从那里构建树，用刚才描述的方法拆分尾部。如果第一部分没有匹配，算法向左移动拆分点（Address,ZipCode）,然后继续。
 
+尽管这在大多数情况下可行的，但是该算法还是有可能选择到了错误的属性。假设Person类也有一个addressZip属性。算法会在第一次拆分时匹配成功，选择到错的属性，然后失败（因为addressZip属性可能没有code属性）。
 
+为解决这个模糊情况，你可以使用\_插入方法名以手工定义遍历点。所以我们的方法名会如下：
+```
+List<Person> findByAddress_ZipCode(ZipCode zipCode);
+```
 
+因为我们把下划线字符当作保留字符，我们强烈建议使用标准的Java命名规范（就是使用驼峰命名代替下划线在属性名中）。
+
+### 4.4.4. 特殊参数处理
+
+在查询中处理参数，在之前的例子中已经看到定义方法参数。除此之外，基础架构推荐确定的特殊类型，例如Pageable和Sort,用来在你的查询中动态分页和排序。如下示例展示了这些特征：
+
+例子17： 在查询方法使用Pageable,Slice和Sort
+```
+Page<User> findByLastname(String lastname, Pageable pageable);
+
+Slice<User> findByLastname(String lastname, Pageable pageable);
+
+List<User> findByLastname(String lastname, Sort sort);
+
+List<User> findByLastname(String lastname, Pageable pageable);
+```
+第一个方法让你给查询方法传递一个 org.springframework.data.domain.Pageable实例来给静态定义查询添加动态分页。Page有元素的总个数和可用的分页数。基础架构触发一个计数查询来计算实例的总数。这样可能是耗性能的（取决于使用的存储），你可以使用Slice代替。Slice仅知道是否有下一个Slice可用，这样在一个大的结果集中可能会高效点。
+
+分页选项也可以通过Pageable实例处理。如果你只需要排序，给方法传递一个org.springframework.data.domain.Sort实例。正如你可以看到的，返回一个List也是可能的。在这种情况下，构建一个分页实例额外的元数据不会被创建（意味着必要的计数查询不会被发生）。相反，它限制查询查找实体给定的范围。
+
+！找出一个实体查询你可以获得多少个分页，你需要触发额外的计数查询。默认情况下，这个查询从你实际触发查询中派生出来。
+
+### 4.4.5. 限制查询结果
+
+查找方法的结果可以通过使用first和top关键字来限制，这些关键字可以交换使用。一个可选的数值可以被添加到top和first来限定返回的最大结果。如果省略了数字，默认值是1。如下示例展示如何限制查询大小：
+
+例子18： 限制使用Top和First查询的结果大小
+```
+User findFirstByOrderByLastnameAsc();
+
+User findTopByOrderByAgeDesc();
+
+Page<User> queryFirst10ByLastname(String lastname, Pageable pageable);
+
+Slice<User> findTop3ByLastname(String lastname, Pageable pageable);
+
+List<User> findFirst10ByLastname(String lastname, Sort sort);
+
+List<User> findTop10ByLastname(String lastname, Pageable pageable);
+```
+限制表达式也支持Distinct关键字。此外，对于查询限制结果集为一个实例，支持用Optional关键字包装结果。
+
+如果pagination和slicing应用于限制查询分页（可用页数的计算），在限制结果中应用。
+
+！通过使用Sort参数，限制结果结合动态查询，让你表达'K'最小和‘K'最大元素的查询方法。
+
+### 4.4.6. 流式查询结果
+
+查询方法的结果集可以通过使用Java 8的Stream<T>作为返回类型被递增处理。代替将查询结果封装在Stream，数据特殊存储方法用于执行流式查询，如下示例：
+
+例子19. 使用Java 8 Stream<T>的流式查询结果
+```
+@Query("select u from User u")
+Stream<User> findAllByCustomQueryAndStream();
+
+Stream<User> readAllByFirstnameNotNull();
+
+@Query("select u from User u")
+Stream<User> streamAllPaged(Pageable pageable);
+```
+
+!Stream可能潜在包装底层数据特殊存储资源，所以必须在使用后关闭。你可以使用close()方法手动关闭Stream，也可以使用Java 7 的try-with-resources块，如下示例展示：
+
+例子20. 在try-with-resources块中使用Stream<T>结果集
+```
+try (Stream<User> stream = repository.findAllByCustomQueryAndStream()) {
+  stream.forEach(…);
+}
+```
+
+!不是所有的Spring Data模块在现阶段支持Stream<T>作为返回类型
+
+### 4.4.7. 异步查询结果
+
+通过使用Spring的异步方法执行能力，repositories查询可以异步执行。这意味着方法调用时立即返回，而实际查询执行发生在被提交到Spring TaskExecutor的任务。异步查询执行和响应查询执行不同，并不能混合。参考特殊存储文档获得响应支持细节。如下示例展示一些异步查询：
+
+```
+//使用java.util.concurrent.Future作为返回类型
+@Async
+Future<User> findByFirstname(String firstname);               
+
+//使用Java 8的java.util.concurrent.CompletableFuture作为返回类型
+@Async
+CompletableFuture<User> findOneByFirstname(String firstname); 
+
+//使用org.springframework.util.concurrent.ListenableFuture作为返回类型
+@Async
+ListenableFuture<User> findOneByLastname(String lastname);    
+```
+
+## 4.5. 创建Repository实例
+ 
+ 在这章，为定义的repository接口创建实例和bean定义。一个方法是通过使用支持repository机制的Spring Data模块一起附带的Spring命名空间，尽管我们通常建议使用Java配置。
+ 
+ ### 4.5.1 XML配置
+ 
+ 每个Spring Data模块包含一个让你定义Spring可以为你扫描的基本包的repositories元素，如下示例：
+ 例子21. 通过XML使用Spring Data repositories
+
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<beans:beans xmlns:beans="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns="http://www.springframework.org/schema/data/jpa"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/data/jpa
+    http://www.springframework.org/schema/data/jpa/spring-jpa.xsd">
+
+  <repositories base-package="com.acme.repositories" />
+
+</beans:beans>
+```
+
+在前面的例子中，Spring扫描com.acme.repositories及子包下继承Repository或子接口的接口。对于每个找到的接口，基础结构会注册持久化特殊技术FactoryBean来创建处理查询方法调用的相应代理。每一个bean被用接口名注册，例如一个UserRepository接口会被注册名为userRepository的bean。base-package属性支持通配符，所以你可以定义扫描包的模式（正则表达式）。
+
+使用过滤器
+
+默认情况下，基础结构会选择位于配置基础包下继承持久化特殊技术Repository子接口的每一个接口，并为它创建bean实例。然而，你可能想要对某个接口为它们创建实例进行更细粒度的控制。这样做，在<repositories/>元素内使用<include-filter>和<exclude-filter>元素。语义完成等同于spring上下文中的命名空间。查看详情，为这些元素请看Spring 参考文档。
+
+例子，从基础结构排除确认接口作为repository的bean,你可以使用如下配置：
+
+例子22. 使用exclude-filter元素
+```
+<repositories base-package="com.acme.repositories">
+  <context:exclude-filter type="regex" expression=".*SomeRepository" />
+</repositories>
+```
+前面例子排除所有以SomeRepository结尾的接口被创建实例。
+
+### 4.5.2. Java配置
+
+repository基础结构也可以通过在Java配置类上使用特定存储的@Enable${store}Repositories注解来触发。对于基于Java的Spring容器配置的介绍，请看Spring参考文档中的Java配置。
+
+启用Spring Data repositories的样例配置如下：
+
+例子23. 基于注解repository配置的样例
+```
+@Configuration
+@EnableJpaRepositories("com.acme.repositories")
+class ApplicationConfiguration {
+
+  @Bean
+  EntityManagerFactory entityManagerFactory() {
+    // …
+  }
+}
+```
+
+!前面的例子使用特殊的JPA注解，你可以根据你实际使用的存储模块改变。同样应用EntityManagerFactory bean的定义。查看特殊存储配置的章节。
+
+### 4.5.3. 独立使用
+
+你也可以在Spring容器外使用repository基础结构，例如在CDI环境。你依然需要一些Spring依赖在类路径下，但是，一般情况下，你也可以通过编程的方式构建repositories.提供的repository支持的Spring Data 模块附带一个持久化特定技术的你可以像下面使用的RepositoryFactory:
+
+例子24. 单独使用repository工厂
+```
+RepositoryFactorySupport factory = … // Instantiate factory here
+UserRepository repository = factory.getRepository(UserRepository.class);
+```
+
+## 4.6. Spring  Data Repositories的自定义实现
+
+这章介绍repository自定义，以及碎片如何形成复合repository。
 
 
