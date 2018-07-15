@@ -900,5 +900,7 @@ userRepository.findAll(predicate);
 
 ### 4.8.2 Web支持
 
+!本节包含Spring Data Web支持的文档，因为它在Spring Data Commons当前（或更高）版本实现。新引入的支持改变了很多东西，所以我们在[web.legacy]保留之前行为的文档。
+
 
 
