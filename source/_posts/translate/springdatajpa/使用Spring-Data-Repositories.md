@@ -843,6 +843,62 @@ class AnAggregateRoot {
 
 ### 4.8.1 Querydsl扩展
 
+Querydsl是一个框架，可以通过流式API构建静态类型SQL类查询。
+
+几个Spring Data模块支持通过QuerydslPredicateExecutor整合Querydsl,如下示例：
+
+例子39. QuerydslPredicateExecutor接口
+```
+package org.springframework.data.querydsl;
+
+import com.querydsl.core.types.OrderSpecifier;
+import com.querydsl.core.types.Predicate;
+import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+
+public interface QuerydslPredicateExecutor<T> {
+
+    //查找和返回匹配Predicate的单个实例
+    Optional<T> findOne(Predicate var1);
+
+    //查找和返回匹配Predicate的所有实例
+    Iterable<T> findAll(Predicate var1);
+
+    Iterable<T> findAll(Predicate var1, Sort var2);
+
+    Iterable<T> findAll(Predicate var1, OrderSpecifier... var2);
+
+    Iterable<T> findAll(OrderSpecifier... var1);
+
+    Page<T> findAll(Predicate var1, Pageable var2);
+
+    //返回匹配Predicate的实体个数
+    long count(Predicate var1);
+
+    // 返回是否存在匹配Predicate的实体
+    boolean exists(Predicate var1);
+}
+```
+
+确保支持Querydsl，继承QuerydslPredicateExecutor在你的repository接口，如下示例：
+
+例子40. Quereydsl整合repositories
+```
+interface UserRepository extends CrudRepository<User, Long>, QuerydslPredicateExecutor<User> {
+}
+```
+
+前面的例子让你使用Querydsl的Predicate实例写类型安全的查询，如下示例：
+```
+Predicate predicate = user.firstname.equalsIgnoreCase("dave")
+	.and(user.lastname.startsWithIgnoreCase("mathews"));
+
+userRepository.findAll(predicate);
+```
+
+### 4.8.2 Web支持
 
 
 
