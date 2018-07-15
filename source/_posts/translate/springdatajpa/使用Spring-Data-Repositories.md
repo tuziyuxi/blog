@@ -603,4 +603,246 @@ UserRepository repository = factory.getRepository(UserRepository.class);
 
 这章介绍repository自定义，以及碎片如何形成复合repository。
 
+当一个查询方法要求不同的行为，或者不嗯能够从查询派生实现时，需要提供自定义实现。Spring Data让你提供自定义代码，并且整合通用的CRUD抽象和查询方法功能。
+
+### 4.6.1. 定义单个repositories
+
+使用自定义功能丰富repository,你首先要定义一个片段接口，然后实现自定义功能，如下列所示：
+
+例子25. 自定义repository功能的接口
+```
+interface CustomizedUserRepository {
+  void someCustomMethod(User user);
+}
+```
+然后你可以让你的repository接口添加继承片段接口，如下示例：
+
+例子26. 定义repository功能实现
+```
+class CustomizedUserRepositoryImpl implements CustomizedUserRepository {
+
+  public void someCustomMethod(User user) {
+    // Your custom implementation
+  }
+}
+```
+
+! 与片段接口对应的类名最重要的部分是Impl后缀
+
+实现本身不依赖Spring Data,可以被当作普通的Spring bean。因此，你可以使用依赖注入行为注入引入到其他beans（例如一个JdbcTemplate）,在切面作为一部分，等等。
+
+你可以让你的repository接口继承片段接口，如下示例：
+
+例子27. 改变你的repository接口
+```
+interface UserRepository extends CrudRepository<User, Long>, CustomizedUserRepository {
+
+  // Declare query methods here
+}
+```
+使用repository接口扩展片段接口组合CRUD，自定义功能，并使它对客户端是可用的。
+
+Spring Data repositories通过使用形成repository组合的片段来实现。Fragments(注：片段、碎片不知怎么翻译)是基本的repository，功能方面（例如QueryDsl）,自定义接口及其实现。每次你向你的repository接口添加一个接口时，通过添加一个fragment来增加组合。每个Spring Data模块都提供基本的repository和repository方面实现。
+
+如下示例展示定义接口和它们的实现：
+
+例子28. Fragments和它们的实现
+```
+interface HumanRepository {
+  void someHumanMethod(User user);
+}
+
+class HumanRepositoryImpl implements HumanRepository {
+
+  public void someHumanMethod(User user) {
+    // Your custom implementation
+  }
+}
+
+interface ContactRepository {
+
+  void someContactMethod(User user);
+
+  User anotherContactMethod(User user);
+}
+
+class ContactRepositoryImpl implements ContactRepository {
+
+  public void someContactMethod(User user) {
+    // Your custom implementation
+  }
+
+  public User anotherContactMethod(User user) {
+    // Your custom implementation
+  }
+}
+```
+
+如下示例展示了继承了CrudRepository的自定义repository接口：
+
+例子29. 改变你的repository接口
+```
+interface UserRepository extends CrudRepository<User, Long>, HumanRepository, ContactRepository {
+
+  // Declare query methods here
+}
+```
+
+Repositories可以被多个自定义实现组成，这些实现按声明的顺序导入。自定义实现有更高的优先级比起基本实现和repository方面。如果两个fragments有同样的方法签名，这个排序让你重写基本repository和切面方法和解决歧意。Repository fragments不被限制在一个repository接口使用。多个repositories也可以使用fragment接口，让你通过不同的repository重新使用自定义。
+
+如下示例展示repository fragment和它的实现：
+
+例子30. Fragments覆盖save(...)
+```
+interface CustomizedSave<T> {
+  <S extends T> S save(S entity);
+}
+
+class CustomizedSaveImpl<T> implements CustomizedSave<T> {
+
+  public <S extends T> S save(S entity) {
+    // Your custom implementation
+  }
+}
+```
+如下示例展示使用之前repository fragment的repository:
+
+例子31：自定义repository接口
+```
+interface UserRepository extends CrudRepository<User, Long>, CustomizedSave<User> {
+}
+
+interface PersonRepository extends CrudRepository<Person, Long>, CustomizedSave<Person> {
+}
+```
+
+配置
+
+如果你使用命名空间配置，repository基础结构尝试自动检测自定义实现fragments，通过扫描它找到repository包下的类。这些类需要遵循将命名空间元素的repository-impl-postfiex属性附加到fragment接口名的命名规范。这个后缀默认为Impl。如下示例展示了使用默认后缀的repository和自定义后缀值的repository.
+
+例子32. 配置例子
+```
+<repositories base-package="com.acme.repository" />
+
+<repositories base-package="com.acme.repository" repository-impl-postfix="MyPostfix" />
+```
+
+前面示例的第一个配置尝试查找一个叫com.acme.repository.CustomizedUserRepositoryImpl 类来作为自定义repository实现。第二个例子尝试查找com.acme.repository.CustomizedUserRepositoryMyPostfix。
+
+解决歧义
+
+如果多个匹配类名的实现在不同的包下找到，Spring Data使用bean名称去标识哪一个去使用。
+
+给定前面展示的CustomizedUserRepository的如下两个自定义实现，第一个实现被使用，它的bean名称是customizedUserRepositoryImpl,匹配fragment接口（CustomizedUserRepository）添加的Impl后缀。
+
+例子33.解决歧义实现
+```
+package com.acme.impl.one;
+
+class CustomizedUserRepositoryImpl implements CustomizedUserRepository {
+
+  // Your custom implementation
+}
+```
+```
+package com.acme.impl.two;
+
+@Component("specialCustomImpl")
+class CustomizedUserRepositoryImpl implements CustomizedUserRepository {
+
+  // Your custom implementation
+}
+```
+如果你用@Component("specialCustom")注解UserRepository,bean的名字加上Impl,然后就匹配定义在com.acme.impl.two的repository实现，从而代替第一个。
+
+手动接线
+
+如果你的自定义实现仅使用基于注解的配置和自动装配，前面展示的方法效果很好，因为它被当作任何一个其他Spring bean处理。如果你实现的fragment bean 需要特殊接线，你可以声明bean，并根据前面章节描述的约束命名它。然后基础结构通过名字手工定义bean的定义，而不是创建一个。如下示例展示如何手动连接自定义是实现：
+ 
+ 例子34. 手动连接自定义实现
+```
+<repositories base-package="com.acme.repository" />
+
+<beans:bean id="userRepositoryImpl" class="…">
+  <!-- further configuration -->
+</beans:bean>
+```
+
+### 4.6.2. 自定义基础repository
+
+前面章节介绍的方法要求当你想要自定义基本repository行为时自定义每个repository接口，以至于所有的repositories都受到影响。为了避免对所有repositories改变行为，你可以创建一个继承持久化特定技术的repository基本类的实现。然后这个类扮演一个repository代理的自定义的基本类，如下所示：
+
+例子35. 自定义repository基础类
+```
+class MyRepositoryImpl<T, ID extends Serializable>
+  extends SimpleJpaRepository<T, ID> {
+
+  private final EntityManager entityManager;
+
+  MyRepositoryImpl(JpaEntityInformation entityInformation,
+                          EntityManager entityManager) {
+    super(entityInformation, entityManager);
+
+    // Keep the EntityManager around to used from the newly introduced methods.
+    this.entityManager = entityManager;
+  }
+
+  @Transactional
+  public <S extends T> S save(S entity) {
+    // implementation goes here
+  }
+}
+```
+
+ ！类需要一个父类的构造器，特定存储repository工厂实现使用。如果repository基础类有多个构造器，覆盖采用EntityInformation和特定存储基础结构类的一个（例如一个EntityManager或者一个模板类）。
+ 
+ 最后一步是使Spring Data基础结构知道自定义的repository基础类。在Java配置中，你可以使用@Enable${store}Repositories注解的repositoryBaseClass属性来做，如下示例：
+ 
+ 例子36. 使用Java配置，配置自定义repository基础类
+```
+@Configuration
+@EnableJpaRepositories(repositoryBaseClass = MyRepositoryImpl.class)
+class ApplicationConfiguration { … }
+```
+在XML命名空间一个相应的属性是可用的，如下示例：
+
+例子37. 使用XML配置一个自定义的repository基础类
+```
+<repositories base-package="com.acme.repository"
+     base-class="….MyRepositoryImpl" />
+```
+
+4.7. 从聚合根发布事件
+
+由repositories管理的实体是聚合根。在一个域驱动设计引用中，这些聚合根通常发布域事件。Spring Data 提供一个叫@DomainEvents的注解，你可以在你的聚合根的方法上使用它，尽可能使发布简单，如下示例：
+
+例子38. 从聚合根暴露域事件
+```
+class AnAggregateRoot {
+
+    //使用@DomainEvents方法可以返回单个事件实例或事件集合，它必须不带有任何参数
+    @DomainEvents 
+    Collection<Object> domainEvents() {
+        // … return events you want to get published here
+        // 返回要在此处发布的事件
+    }
+
+    // 所有事件都被发布后，我们有个被@AfterDomainEventPublication注解的方法。它可能被用来清理发布事件的列表（或其实用途）
+    @AfterDomainEventPublication 
+    void callbackMethod() {
+       // … potentially clean up domain events list
+    }
+}
+```
+ 
+每次调用一个Spring Data repository的save(...)方法时，这些方法都会被调用。
+ 
+## 4.8. Spring Data扩展
+
+本章描述了一组Spring Data的扩展，可以使Spring Data在不同的上下文可以使用。目前，大多数集合都指向Spring MVC。
+
+### 4.8.1 Querydsl扩展
+
+
+
 
