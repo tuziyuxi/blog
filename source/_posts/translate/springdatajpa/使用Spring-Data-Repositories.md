@@ -812,7 +812,7 @@ class ApplicationConfiguration { … }
      base-class="….MyRepositoryImpl" />
 ```
 
-4.7. 从聚合根发布事件
+## 4.7. 从聚合根发布事件
 
 由repositories管理的实体是聚合根。在一个域驱动设计引用中，这些聚合根通常发布域事件。Spring Data 提供一个叫@DomainEvents的注解，你可以在你的聚合根的方法上使用它，尽可能使发布简单，如下示例：
 
