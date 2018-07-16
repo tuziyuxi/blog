@@ -902,5 +902,133 @@ userRepository.findAll(predicate);
 
 !本节包含Spring Data Web支持的文档，因为它在Spring Data Commons当前（或更高）版本实现。新引入的支持改变了很多东西，所以我们在[web.legacy]保留之前行为的文档。
 
+支持repository编程模式的Spring Data模块附带有不同的web支持。Web相关组件要求Spring MVC的jar包在类路径下。其中一些甚至提供Spring HATEOAS的整合（注：Spring HATEOAS 是一个用于支持实现超文本驱动的 REST Web 服务的开发库。是 HATEOAS 的实现。）。通常在Java配置类使用@EnableSpringDataWebSupport注解来开始整合支持，如下示例：
+
+例子41. 开启Spring Data Web支持
+
+```
+@Configuration
+@EnableWebMvc
+@EnableSpringDataWebSupport
+class WebConfiguration {}
+```
+@EnableSpringDataWebSupport注解注册了一些组件，稍后会讨论。它会检测类路径下的Spring HATEOAS，如果存在，则注册组合组件。
+
+或者，如果你使用XML配置，注册SpringDataWebConfiguration和HateoasAwareSpringDataWebConfiguration当做Spring的bean，如下示例：
+
+例子42. 在XML开启对Spring Data Web的支持
+```
+<bean class="org.springframework.data.web.config.SpringDataWebConfiguration" />
+
+<!-- If you use Spring HATEOAS, register this one *instead* of the former -->
+<bean class="org.springframework.data.web.config.HateoasAwareSpringDataWebConfiguration" />
+```
+
+**基础web支持**
+
+之前展示的配置注册了一些基本组件：
+* DomainClassConverter让Spring MVC从请求参数或路径变量解析为repository管理的域类实例
+* HandlerMethodArgumentResolver实现让Spring MVC从请求参数解析Pageable和Sort实例
+
+DomainClassConverter
+
+DomainClassConverter让你在Spring MVC控制类的方法签名中直接使用域类，以至于你不需要通过repository手动查找实例，如下示例：
+
+例子43. Spring MVC控制层在方法签名使用域类
+```
+@Controller
+@RequestMapping("/users")
+class UserController {
+
+  @RequestMapping("/{id}")
+  String showUserForm(@PathVariable("id") User user, Model model) {
+
+    model.addAttribute("user", user);
+    return "userForm";
+  }
+}
+```
+正如你看到的，方法直接接受一个User实例，并且不需要进一步的查找。首先，通过让Spring MVC转变参数变量为域类的id类型解析实例，最后，通过调用为域类注册的repository实例的findById(...)方法访问实例。
+
+！当前，repository必须实现CrudRepository才有资格被发现进行转换。
+
+Pageable和Sort的HandlerMethodArgumentResolvers
+
+上一节展示的配置片段注册了PageableHandlerMethodArgumentResolver和SortHandlerMethodArgumentResolver的实例。注册使Pageable和Sort可以作为控制层方法的参数，如下示例：
+
+例子44. 使用Pageable作为控制层方法参数
+```
+@Controller
+@RequestMapping("/users")
+class UserController {
+
+  private final UserRepository repository;
+
+  UserController(UserRepository repository) {
+    this.repository = repository;
+  }
+
+  @RequestMapping
+  String showUsers(Model model, Pageable pageable) {
+
+    model.addAttribute("users", repository.findAll(pageable));
+    return "users";
+  }
+}
+```
+
+前面的方法签名导致Spring MVC尝试通过使用下列默认配置中从请求参数派生Pageable实例：
+
+Table 1. 为Pageable实例评估请求参数
+
+|  |  |
+| ----- | ----- |
+| page | 你想要请求的页面，下标0开始，默认0 |
+| size | 每个分页的大小，默认20 |
+| sort | 应按格式property,property(,ASC或者DESC)排序的属性。默认排序方向是升序。如果你需要切换排序方向，使用多个sort参数，例如：?sort=firstname&sort=lastname,asc |
+
+定制行为，注册一个bean,各自实现PageableHandlerMethodArgumentResolverCustomizer的接口和ortHandlerMethodArgumentResolverCustomizer的接口。调用customize()方法，让你改变设置，如下示例：
+
+```
+@Bean SortHandlerMethodArgumentResolverCustomizer sortCustomizer() {
+    return s -> s.setPropertyDelimiter("<-->");
+}
+```
+如果设置一个存在的MethodArgumentResolver的参数不满足你的目标，你可以继承SpringDataWebConfiguration或者启动HATEOAS的等效项，重写pageableResolver()或者sortResolver()方法，并导入自定义配置文件，而不是使用@Enable注解。
+
+如果你需要从请求中处理多个Pageable或Sort示例（例如多个table），你可以使用spring的@Qualifier注解区分不同实例。请求参数需要加上${qualifier}_前缀。如下示例展示生成的方法签名：
+```
+String showUsers(Model model,
+      @Qualifier("thing1") Pageable first,
+      @Qualifier("thing2") Pageable second) { … }
+```
+你需要填充thing1_page和thing2_page等。
+
+默认Pageable传递到方法等同于Pageable(0,20),但是你可以通过在Pageable参数使用@PageableDefault注解定制化。
+
+**对Pageables的超媒体支持**
+
+Spring HATEOAS附带一个表示模型类（PageResource）,允许你用必要的Page元数据丰富Page实例的内容，和使客户端轻松导航page。从Page到PageResource的转变需要实现Spring HATEOAS的ResourceAssembler 接口，该接口叫PagedResourcesAssembler。如下示例展示如何使用PagedResourcesAssembler 作为控制类方法的参数：
+
+例子45. 使用PagedResourcesAssembler 作为控制类方法参数
+```
+@Controller
+class PersonController {
+
+  @Autowired PersonRepository repository;
+
+  @RequestMapping(value = "/persons", method = RequestMethod.GET)
+  HttpEntity<PagedResources<Person>> persons(Pageable pageable,
+    PagedResourcesAssembler assembler) {
+
+    Page<Person> persons = repository.findAll(pageable);
+    return new ResponseEntity<>(assembler.toResources(persons), HttpStatus.OK);
+  }
+}
+```
+前面例子展示的配置，使PagedResourcesAssembler作为控制类参数。调用toResources(...)有如下影响：
+* Page的内容变为PagedResources实例的内容
+* PageResources对象获得一个PageMetaData实例，该实例被来自Page和底层PageRequest信息填充。
+* 根据page的状态，PageResources可能会获得附带的向前和向后的链接。链接指向方法集合的URI。添加到方法的参数和PageableHandlerMethodArgumentResolver的设置相匹配，以确保稍后可以解析链接。
 
 
