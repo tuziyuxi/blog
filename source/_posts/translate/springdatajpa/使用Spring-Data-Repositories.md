@@ -1031,4 +1031,175 @@ class PersonController {
 * PageResources对象获得一个PageMetaData实例，该实例被来自Page和底层PageRequest信息填充。
 * 根据page的状态，PageResources可能会获得附带的向前和向后的链接。链接指向方法集合的URI。添加到方法的参数和PageableHandlerMethodArgumentResolver的设置相匹配，以确保稍后可以解析链接。
 
+假定在数据库有30个Person实例，你现在可以触发一个请求（GET请求 http://localhost:8080/persons），获得类似如下输出：
+```
+{ "links" : [ { "rel" : "next",
+                "href" : "http://localhost:8080/persons?page=1&size=20 }
+  ],
+  "content" : [
+     … // 20 Person instances rendered here
+  ],
+  "pageMetadata" : {
+    "size" : 20,
+    "totalElements" : 30,
+    "totalPages" : 2,
+    "number" : 0
+  }
+}
+```
+
+你可以看到assembler生成了正确的URI，选择默认配置解析参数到请求中的Pageable。这意味着，如果你改变配置，链接会自动修改。默认情况下，assembler指向它调用的控制层方法，但是可以被自定义，通过提供自定义链接当作构建分页链接基础使用，该自定义assembler重写PagedResourcesAssembler.toResource(…)方法。
+
+**Web数据绑定支持**
+
+Spring Data映射（描述在Projections）可以用来绑定传入请求的有效负载，通过使用JSONPath表达式（需要Jayway Json）或XPath表达式（需要XmlBeam）,如下实例所示：
+
+例子46：使用JSONPath和XPath表达式绑定HTTP有效负载
+```
+@ProjectedPayload
+public interface UserPayload {
+
+  @XBRead("//firstname")
+  @JsonPath("$..firstname")
+  String getFirstname();
+
+  @XBRead("/lastname")
+  @JsonPath({ "$.lastname", "$.user.lastname" })
+  String getLastname();
+}
+```
+
+前面实例展示的类型可以用作Spring MVC处理方法的参数，或通过使用ParameterizedTypeReference在某个RestTemplate的方法上。前面的方法声明厂商在给定文档的任何地方尝试查找firstname。lastname的XML查找在传入文东的顶层执行。JSON变量首先尝试顶层变量，如果没有返回一个值，也会尝试嵌套在user子文档中。这样，源文档结构的变化可以被减少，而不需要客户端调用暴露的方法（通常是基于类的有效负载绑定的缺点）。
+
+嵌套映射被支持，如在Projections描述。如果接口返回复杂的非接口类型，则使用Jackson ObjectMapper映射最终值。
+
+对于Spring MVC，必要的转化器已经自动注册了，只要使用了@EnableSpringDataWebSupport，和需要的依赖已经在类路径上。对于使用RestTemplate，手动注册ProjectingJackson2HttpMessageConverter (JSON) 或者XmlBeamHttpMessageConverter。
+
+获取更多信息，查看web映射例子，在Spring Data例子repository典范中。
+
+**Querydsl Web支持**
+
+对于那些有QueryDSL整合的存储库，可以从Request字符串包括的属性派生查询。
+
+考虑如下查询字符串：
+```
+?firstname=Dave&lastname=Matthews
+```
+给定前面例子的User对象，通过使用QuerydslPredicateArgumentResolver将查询字符串解析为如下值。
+```
+QUser.user.firstname.eq("Dave").and(QUser.user.lastname.eq("Matthews"))
+```
+
+该特征是自动开启的，随着@EnableSpringDataWebSupport，当QueryDsl在类路径下找到。
+
+添加到@QuerydslPredicate方法签名提供一个准备使用的Predicate，通过使用QuerydslPredicateExecutor可以运行。
+
+！通常从方法返回类型解析类型参数。由于该信息不一定匹配域类型，使用QuerydslPredicate的root属性是一个好主意。
+
+如下示例展示如何在方法签名使用@QuerydslPredicate
+```
+@Controller
+class UserController {
+
+  @Autowired UserRepository repository;
+
+  @RequestMapping(value = "/", method = RequestMethod.GET)
+  //解析查询字符串参数匹配User的Predicate
+  String index(Model model, @QuerydslPredicate(root = User.class) Predicate predicate,    
+          Pageable pageable, @RequestParam MultiValueMap<String, String> parameters) {
+
+    model.addAttribute("users", repository.findAll(predicate, pageable));
+
+    return "index";
+  }
+}
+```
+
+默认绑定如下：
+* Object在简单属性为.eq
+* Object在结合类似属性为contains
+* Collection在简单属性为in
+
+这些绑定可以被定制化，通过@QuerydslPredicate的binding属性，或者通过使用Java8默认方法和添加QuerydslBinderCustomizer 方法到repository接口。
+```
+//QuerydslPredicateExecutor为Predicate提供访问特殊查找方法
+//定义在repository接口的QuerydslBinderCustomizer ，自动获取和快捷方式@QuerydslPredicate(bindings=…​)
+interface UserRepository extends CrudRepository<User, String>,
+                                 QuerydslPredicateExecutor<User>,                
+                                 QuerydslBinderCustomizer<QUser> {               
+
+  @Override
+  default void customize(QuerydslBindings bindings, QUser user) {
+    //定义username属性绑定到简单contains绑定
+    bindings.bind(user.username).first((path, value) -> path.contains(value))    
+    //定义字符串属性的默认绑定到不区分大小写的contains的匹配
+    bindings.bind(String.class)
+      .first((StringPath path, String value) -> path.containsIgnoreCase(value)); 
+    // 从Predicate解析中排查password属性
+    bindings.excluding(user.password);                                           
+  }
+}
+```
+
+### 4.8.3. Repository填充器
+
+如果你使用Spring JDBC模块，你可能属性使用SQL脚本填充DataSource的支持。在repository层有类似的抽象可以使用，尽管它不适用SQL作为数据定义语言，因为它必须存储独立。因此，填充器支持XML（通过Spring的OXM抽象）和JSON(通过Jackson)来定义填充到repository的数据。
+
+假如你有一个文件data.json,如下内容：
+
+例子47. 数据定义JSON格式
+```
+[ { "_class" : "com.acme.Person",
+ "firstname" : "Dave",
+  "lastname" : "Matthews" },
+  { "_class" : "com.acme.Person",
+ "firstname" : "Carter",
+  "lastname" : "Beauford" } ]
+```
+
+你可以使用Spring Data Commons提供的repository命名空间的填充元素来填充你的repositories。填充预定数据到你的PersonRepository,声明一个类似如下的填充器：
+例子48. 声明一个Jackson repository填充器
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:repository="http://www.springframework.org/schema/data/repository"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/data/repository
+    http://www.springframework.org/schema/data/repository/spring-repository.xsd">
+
+  <repository:jackson2-populator locations="classpath:data.json" />
+
+</beans>
+```
+
+前面的声明导致data.json文件可以被读取和通过Jackson ObjectMapper反序列化。
+
+JSON对象解组的类型通过检查JSON文档的\_class属性来确定。基础结构甚至选择了相应了repository处理反序列化的对象。
+
+代替使用XML定义repository应该被填充的数据，你可以使用unmarshaller-populator 元素。你配置它，以使用XML编制选项的一个，在Spring OXM。查看Spring参考文档更多详情。如下示例展示如何使用JAXB解组一个repository填充器：
+
+例子49：声明一个解组repository填充器（使用JAXB）
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:repository="http://www.springframework.org/schema/data/repository"
+  xmlns:oxm="http://www.springframework.org/schema/oxm"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/data/repository
+    http://www.springframework.org/schema/data/repository/spring-repository.xsd
+    http://www.springframework.org/schema/oxm
+    http://www.springframework.org/schema/oxm/spring-oxm.xsd">
+
+  <repository:unmarshaller-populator locations="classpath:data.json"
+    unmarshaller-ref="unmarshaller" />
+
+  <oxm:jaxb2-marshaller contextPath="com.acme" />
+
+</beans>
+```
+
 
