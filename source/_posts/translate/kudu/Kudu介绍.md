@@ -1,5 +1,5 @@
 ---
-title: '''Kudu介绍'''
+title: ''Kudu介绍''
 date: 2018-10-06 08:09:10
 categories:
 - Kudu 1.7.1 官方文档
