@@ -87,7 +87,7 @@ Fluentd是一个开源数据收集器，它允许你统一数据收集和消耗�
 
 # 将Apache日志存储到MongoDB中
 
-{% asset_img apacheToMongoDb.png.png %}
+{% asset_img apacheToMongoDb.png %}
 
 # 
 

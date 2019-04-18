@@ -7,6 +7,7 @@ tags:
 - 大数据
 - Kafka
 ---
+Kafka版本2.0.0
 
 Kafka用于构建实时数据管道和流应用程序。它具有水平可扩展性、容错性、快速性。
 
@@ -82,10 +83,40 @@ Kafka用于构建实时数据管道和流应用程序。它具有水平可扩展
  
  # 快速开始
   
-  
+  3 创建主题
+  ```
+kafka-topics --create --zookeeper ehdp-node-2:2181/kafka --replication-factor 1 --partitions 1 --topic petertest3
+```
+{% asset_img kafkatopic.png %}
+
+{% asset_img kafkatopicsuc.png %}
  
+ 查看主题列表
  
+ ```
+kafka-topics --list --zookeeper ehdp-node-2:2181/kafka
+```
+
+4 发送一些消息
+```
+kafka-console-producer --broker-list ehdp-node-2:9092 --topic petertest
+```
+每行作为单独的消息发送，运行生产者，然后再控制台中输入消息以发送到服务器 
  
+5 启动消费者
+
+```
+kafka-console-consumer --bootstrap-server ehdp-node-2:9092 --topic petertest --from-beginning
+```
+
+7 使用Kafka Connect导入/导出数据
+
+
+
+
+
+
+
 
 
 
