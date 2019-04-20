@@ -111,6 +111,124 @@ kafka-console-consumer --bootstrap-server ehdp-node-2:9092 --topic petertest --f
 
 7 使用Kafka Connect导入/导出数据
 
+Kafka Connect是Kafka附带的工具，可以向kafka导入和导出数据
+
+8 使用Kafka Streams处理数据
+
+Kafka Streams是一个客户端库，用于构建任务关键型实时应用程序和微服务，其中输入和输出数据存储在Kafka集群中。
+
+# 2. API
+
+生产者API、消费者API、流API、连接器API、管理客户端API
+
+## 2.1 生产者API
+```xml
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>kafka-clients</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+
+## 2.2 消费者API
+
+```xml
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>kafka-clients</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+## 2.3 流API
+流API允许转化数据流从输入主题到输出主题（就是把输入主题的数据，经过处理，转化到输出主题）
+
+```xml
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>kafka-streams</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+
+## 2.4 连接API
+
+
+## 2.5 管理客户端API
+
+支持管理和检查主题，代理，acls和其他Kafka对象。
+
+
+# 3 配置
+
+Kafka使用属性文件格式中的键值对进行配置。可以从文件或以编程方式提供这些值。
+
+## 3.1 Broker(经纪人)配置
+基本配置：
+* broker.id : 此服务器的代理ID
+* log.dirs : 保存日志数据的目录
+* zookeeper.connect : Zookeeper主机字符串
+
+## 3.2 topic级别的配置
+
+话题相关的配置可以在创建时指定，也可以后面修改，没有指定，则使用服务器默认的配置。
+
+
+## 3.3 生产者配置
+
+## 3.4 消费者配置
+
+## 3.4.1 新消费者配置
+
+## 3.4.2 旧消费者配置
+
+## 3.5 Kafka连接配置
+
+## 3.6 Kafka流配置
+
+## 3.7 管理客户端配置
+
+# 4 设计
+
+## 4.1 动机
+
+把Kafka设计为实时数据处理统一平台
+
+## 4.2 坚持
+
+* 不要害怕文件系统
+
+* 恒定的时间
+
+## 4.3 效率
+
+* 端到端批量压缩
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
